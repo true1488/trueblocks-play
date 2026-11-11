@@ -20,7 +20,7 @@
     if(/^\w{3,40}$/.test(q.get('b')||'')) X.bot=q.get('b');
     W.ready(); W.expand();
     if(W.disableVerticalSwipes) W.disableVerticalSwipes();
-    ['setHeaderColor','setBackgroundColor','setBottomBarColor'].forEach(function(m){ try{ if(W[m]) W[m]('#080a0f'); }catch(e){} });
+    ['setHeaderColor','setBackgroundColor','setBottomBarColor'].forEach(function(m){ try{ if(W[m]) W[m]('#000000'); }catch(e){} });
     var ge=function(v){ try{ return W.isVersionAtLeast(v); }catch(e){ return false; } };
     var HF=W.HapticFeedback&&ge('6.1')?W.HapticFeedback:null, CS=W.CloudStorage&&ge('6.9')?W.CloudStorage:null, Pl={};
     if(HF) Pl.Haptics={impact:function(o){ try{ HF.impactOccurred(String((o&&o.style)||'light').toLowerCase()); }catch(e){} }};
@@ -542,6 +542,25 @@ html.cb .blk.m0,html.cb .blk.m1,html.cb .blk.m2,html.cb .blk.m4{position:relativ
 .native .row2 .secbtn{flex:1}
 
 </style>
+<style id="mc">
+/* pure black background and Minecraft-style square blocks */
+:root{--bg:#000;--bg2:#000;--card:#0a0a0a;--card2:#141414;--well:#101010;--board1:#000;--board2:#000;--line:rgba(255,255,255,.07)}
+html,body{background:#000!important;background-image:none!important}
+.bg{background:#000!important}
+.bg::after{display:none!important}
+.bgl{display:none!important}
+.board{background:#000!important;box-shadow:inset 0 0 0 1px #1c1c1c!important}
+.cell{background-color:#101010;box-shadow:none;border-radius:3px}
+.cell.alt{background-color:#101010}
+.cell.f,.cell.ghost,.blk{border-radius:2px!important}
+.cell.f{box-shadow:none!important}
+.blk{box-shadow:none!important}
+.slot{background:transparent!important}
+.cell.f.m0{animation:none!important}
+.cell.f.m2::after{display:none!important}
+.cell.f.m4::before,.piece .blk.m4::before,.shelf .cell.m4::before{display:none!important}
+.cell.f.m4,.shelf .cell.f.m4,.piece .blk.m4{box-shadow:none!important}
+</style>
 <div class="bg" id="bg" aria-hidden="true"></div>
 <canvas class="fxc" id="fxc"></canvas>
 <div class="nflash" id="nflash"></div>
@@ -772,43 +791,15 @@ function fullLines(grid){
   return {rows:rows, cols:cols};
 }
 
-// Everything that disappears because of the full lines on the board right now:
-// the lines themselves, whole slime drops touched by a line, and every gem that
-// shares a colour with a gem in a line (resonance).
+// Everything that disappears because of the full lines on the board right now: only the full rows and
+// columns themselves, exactly as in Block Blast (no neighbouring blobs and no "resonance" any more).
 function findClear(grid){
   const fl=fullLines(grid);
   if(!fl.rows.length&&!fl.cols.length) return null;
   const base=new Set();
   fl.rows.forEach(function(r){ for(let c=0;c<N;c++) base.add(r*N+c); });
   fl.cols.forEach(function(c){ for(let r=0;r<N;r++) base.add(r*N+c); });
-  const extra=new Set(), seen=new Set();
-  let blobMax=0;
-  base.forEach(function(i){
-    const v=grid[i];
-    if(matOf(v)!==0||seen.has(i)) return;
-    const col=colOf(v), comp=[i]; seen.add(i);
-    for(let k=0;k<comp.length;k++){
-      const nb=NB[comp[k]];
-      for(let q=0;q<nb.length;q++){
-        const j=nb[q]; if(seen.has(j)) continue;
-        const w=grid[j];
-        if(w&&matOf(w)===0&&colOf(w)===col){ seen.add(j); comp.push(j); }
-      }
-    }
-    if(comp.length>blobMax) blobMax=comp.length;
-    comp.forEach(function(j){ if(!base.has(j)) extra.add(j); });
-  });
-  const rc=new Set();
-  base.forEach(function(i){ const v=grid[i]; if(matOf(v)===2) rc.add(colOf(v)); });
-  let resonance=0;
-  if(rc.size){
-    for(let j=0;j<CELLS;j++){
-      const w=grid[j];
-      if(w&&matOf(w)===2&&rc.has(colOf(w))&&!base.has(j)){ extra.add(j); resonance++; }
-    }
-  }
-  const all=new Set(base); extra.forEach(function(j){ all.add(j); });
-  return {lines:fl.rows.length+fl.cols.length, rows:fl.rows, cols:fl.cols, base:base, extra:extra, all:all, blobMax:blobMax, resonance:resonance, resColors:[...rc]};
+  return {lines:fl.rows.length+fl.cols.length, rows:fl.rows, cols:fl.cols, base:base, extra:new Set(), all:base, blobMax:0, resonance:0, resColors:[]};
 }
 
 function executeClear(grid,fc,lite){
@@ -1155,7 +1146,7 @@ function newRunStats(){ return {score:0,lines:0,cleared:[0,0,0],neon:0}; }
 // ---------- one run: the single place where the rules of a move live ----------
 // The game and the leaderboard check both play through these functions, so a recorded run replays
 // to exactly the score it earned.
-const RULES_V=6;
+const RULES_V=7;
 function newRun(mode,seed){
   return {mode:mode,seed:seed,rng:makeRng(seed),grid:new Array(CELLS).fill(0),tray:[null,null,null],score:0,combo:0,misses:0,moves:0,peak:0,
     trayN:0,stuck:false,extra:[],log:[],neonP:undefined};
@@ -1363,9 +1354,9 @@ ru:{
   tut_done:'Отлично! Дальше — комбо, слайм, песок и камни.', tut_wrong:'Поставь фигуру в подсвеченное место',
   help_line_t:'Линии', help_line:'Заполняй строки и столбцы целиком — они исчезают и дают очки. Блоки никогда не падают: что поставил, то и лежит.',
   help_combo_t:'Комбо', help_combo:'Очищай линии ход за ходом — растёт комбо. Три хода подряд без линии — и серия сгорает. Серия бесконечна, но с каждым шагом удачные фигуры выпадают всё реже. Каждое комбо приносит бонус (до 5 000 за ход), а серия из 128 — джекпот 10 000.',
-  help_slime_t:'Слайм', help_slime:'Слайм липкий: соседние капли одного цвета держатся вместе, и если линия задела каплю, исчезает вся капля.',
+  help_slime_t:'Слайм', help_slime:'Слайм — обычный блок: исчезают только заполненные линии, как в Block Blast.',
   help_sand_t:'Песок', help_sand:'Песок тяжёлый и честный: лежит ровно там, где его поставили.',
-  help_gem_t:'Камни', help_gem:'Камни резонируют: сгорев в линии, камень забирает с собой все камни своего цвета.',
+  help_gem_t:'Камни', help_gem:'Камни — обычные блоки: за один ход исчезают только заполненные линии.',
   help_neon_t:'Неон', help_neon:'Редкий блок: примерно один на 10 000. Очистишь линию с ним — очки этой линии умножаются на 10.',
   help_bg_t:'Фоны', help_bg:'Новые рекорды открывают новые фоны — прямо во время игры: 1 000, 5 000, 10 000, 50 000, 100 000, 250 000, 500 000 и 1 000 000.',
   set_t:'Настройки', set_sfx:'Звуки', set_music:'Музыка', set_haptics:'Вибрация', set_lang:'Язык',
@@ -1404,9 +1395,9 @@ en:{
   tut_done:'Great! Combos, slime, sand and gems are waiting.', tut_wrong:'Place the piece in the highlighted spot',
   help_line_t:'Lines', help_line:'Fill whole rows and columns and they vanish for points. Blocks never fall: they stay where you put them.',
   help_combo_t:'Combo', help_combo:'Clear lines move after move and the combo grows. Three moves in a row without a line and it burns out. The streak never ends, but every step makes lucky pieces rarer. Each combo pays a bonus (up to 5,000 a move), and a streak of 128 pays a 10,000 jackpot.',
-  help_slime_t:'Slime', help_slime:'Slime is sticky: touching drops of one colour hold together, and if a line touches a drop, the whole drop bursts.',
+  help_slime_t:'Slime', help_slime:'Slime is just a block: only full lines disappear, as in Block Blast.',
   help_sand_t:'Sand', help_sand:'Sand is heavy and honest: it stays exactly where you put it.',
-  help_gem_t:'Gems', help_gem:'Gems resonate: when one burns in a line, every gem of its colour goes with it.',
+  help_gem_t:'Gems', help_gem:'Gems are ordinary blocks: only the full lines disappear in a move.',
   help_neon_t:'Neon', help_neon:'A rare block, about one in 10,000. Clear a line with it and that line scores ×10.',
   help_bg_t:'Backgrounds', help_bg:'New records unlock new backgrounds, right in the middle of a game: 1,000, 5,000, 10,000, 50,000, 100,000, 250,000, 500,000 and 1,000,000.',
   set_t:'Settings', set_sfx:'Sound effects', set_music:'Music', set_haptics:'Vibration', set_lang:'Language',
@@ -1445,9 +1436,9 @@ es:{
   tut_done:'¡Genial! Te esperan combos, slime, arena y gemas.', tut_wrong:'Coloca la pieza en el lugar iluminado',
   help_line_t:'Líneas', help_line:'Llena filas y columnas enteras: desaparecen y dan puntos. Los bloques nunca caen: se quedan donde los pones.',
   help_combo_t:'Combo', help_combo:'Limpia líneas jugada tras jugada y el combo crece. Tres jugadas seguidas sin línea y se apaga. La racha no tiene fin, pero cada paso hace más raras las piezas afortunadas. Cada combo da un bonus (hasta 5.000 por jugada) y una racha de 128 da un jackpot de 10.000.',
-  help_slime_t:'Slime', help_slime:'El slime es pegajoso: las gotas vecinas del mismo color van juntas, y si una línea toca una gota, estalla la gota entera.',
+  help_slime_t:'Slime', help_slime:'El slime es un bloque más: solo desaparecen las líneas completas, como en Block Blast.',
   help_sand_t:'Arena', help_sand:'La arena es pesada y honesta: se queda justo donde la pones.',
-  help_gem_t:'Gemas', help_gem:'Las gemas resuenan: cuando una arde en una línea, se lleva todas las gemas de su color.',
+  help_gem_t:'Gemas', help_gem:'Las gemas son bloques normales: en cada jugada solo desaparecen las líneas completas.',
   help_neon_t:'Neón', help_neon:'Un bloque raro, más o menos uno de cada 10 000. Limpia una línea con él y esa línea vale ×10.',
   help_bg_t:'Fondos', help_bg:'Los nuevos récords desbloquean fondos nuevos en plena partida: 1000, 5000, 10 000, 50 000, 100 000, 250 000, 500 000 y 1 000 000.',
   set_t:'Ajustes', set_sfx:'Efectos de sonido', set_music:'Música', set_haptics:'Vibración', set_lang:'Idioma',
@@ -1486,9 +1477,9 @@ pt:{
   tut_done:'Ótimo! Combos, slime, areia e gemas esperam por você.', tut_wrong:'Coloque a peça no lugar destacado',
   help_line_t:'Linhas', help_line:'Preencha linhas e colunas inteiras: elas somem e dão pontos. Os blocos nunca caem: ficam onde você os coloca.',
   help_combo_t:'Combo', help_combo:'Limpe linhas jogada após jogada e o combo cresce. Três jogadas seguidas sem linha e ele se apaga. A sequência não tem fim, mas a cada passo as peças de sorte ficam mais raras. Cada combo dá um bônus (até 5.000 por jogada) e uma sequência de 128 paga um jackpot de 10.000.',
-  help_slime_t:'Slime', help_slime:'O slime é grudento: gotas vizinhas da mesma cor ficam juntas, e se uma linha toca uma gota, a gota inteira estoura.',
+  help_slime_t:'Slime', help_slime:'O slime é só um bloco: só desaparecem as linhas completas, como no Block Blast.',
   help_sand_t:'Areia', help_sand:'A areia é pesada e honesta: fica exatamente onde você a coloca.',
-  help_gem_t:'Gemas', help_gem:'As gemas ressoam: quando uma queima numa linha, leva junto todas as gemas da sua cor.',
+  help_gem_t:'Gemas', help_gem:'As gemas são blocos normais: em cada jogada só desaparecem as linhas completas.',
   help_neon_t:'Neon', help_neon:'Um bloco raro, cerca de um em 10.000. Limpe uma linha com ele e essa linha vale ×10.',
   help_bg_t:'Fundos', help_bg:'Novos recordes desbloqueiam novos fundos no meio do jogo: 1.000, 5.000, 10.000, 50.000, 100.000, 250.000, 500.000 e 1.000.000.',
   set_t:'Configurações', set_sfx:'Efeitos sonoros', set_music:'Música', set_haptics:'Vibração', set_lang:'Idioma',
@@ -1527,9 +1518,9 @@ fr:{
   tut_done:'Bravo ! Combos, slime, sable et gemmes vous attendent.', tut_wrong:'Placez la pièce à l’endroit éclairé',
   help_line_t:'Lignes', help_line:'Remplissez des lignes et des colonnes entières : elles disparaissent et rapportent des points. Les blocs ne tombent jamais : ils restent où vous les posez.',
   help_combo_t:'Combo', help_combo:'Videz des lignes coup après coup et le combo grandit. Trois coups d’affilée sans ligne et il s’éteint. La série n’a pas de fin, mais chaque étape rend les pièces chanceuses plus rares. Chaque combo rapporte un bonus (jusqu’à 5 000 par coup), et une série de 128 donne un jackpot de 10 000.',
-  help_slime_t:'Slime', help_slime:'Le slime colle : les gouttes voisines d’une même couleur restent ensemble, et si une ligne touche une goutte, toute la goutte éclate.',
+  help_slime_t:'Slime', help_slime:'Le slime est un bloc comme un autre : seules les lignes complètes disparaissent, comme dans Block Blast.',
   help_sand_t:'Sable', help_sand:'Le sable est lourd et honnête : il reste exactement où vous le posez.',
-  help_gem_t:'Gemmes', help_gem:'Les gemmes résonnent : quand l’une brûle dans une ligne, elle emporte toutes les gemmes de sa couleur.',
+  help_gem_t:'Gemmes', help_gem:'Les gemmes sont des blocs ordinaires : seules les lignes complètes disparaissent à chaque coup.',
   help_neon_t:'Néon', help_neon:'Un bloc rare, environ un sur 10 000. Videz une ligne avec lui et cette ligne vaut ×10.',
   help_bg_t:'Fonds', help_bg:'Les nouveaux records débloquent de nouveaux fonds en pleine partie : 1 000, 5 000, 10 000, 50 000, 100 000, 250 000, 500 000 et 1 000 000.',
   set_t:'Réglages', set_sfx:'Effets sonores', set_music:'Musique', set_haptics:'Vibration', set_lang:'Langue',
@@ -1568,9 +1559,9 @@ zh:{
   tut_done:'很好！连击、史莱姆、沙子和宝石在等你。', tut_wrong:'请把方块放到高亮位置',
   help_line_t:'消行', help_line:'填满整行或整列，它们会消失并得分。方块永远不会掉落：放在哪里就待在哪里。',
   help_combo_t:'连击', help_combo:'一步接一步地消行，连击就会增长。连续三步没有消行，连击就会中断。连击没有上限，但每多一步，好牌就更难出现。每次连击都有奖励（每步最多 5,000），128 连击可得 10,000 大奖。',
-  help_slime_t:'史莱姆', help_slime:'史莱姆很黏：相邻的同色团块连在一起，只要一行碰到它，整团都会爆开。',
+  help_slime_t:'史莱姆', help_slime:'史莱姆只是普通方块：和 Block Blast 一样，只有填满的行会消失。',
   help_sand_t:'沙子', help_sand:'沙子沉稳老实：放在哪里就留在哪里。',
-  help_gem_t:'宝石', help_gem:'宝石会共鸣：一颗在消行中燃尽，同色的所有宝石都会随之消失。',
+  help_gem_t:'宝石', help_gem:'宝石只是普通方块：每一步只有填满的行会消失。',
   help_neon_t:'霓虹', help_neon:'稀有方块，大约一万个里出现一个。用它消除一行，该行得分 ×10。',
   help_bg_t:'背景', help_bg:'刷新纪录会在游戏中途解锁新背景：1,000、5,000、10,000、50,000、100,000、250,000、500,000 和 1,000,000。',
   set_t:'设置', set_sfx:'音效', set_music:'音乐', set_haptics:'振动', set_lang:'语言',
@@ -1609,9 +1600,9 @@ hi:{
   tut_done:'बहुत बढ़िया! आगे कॉम्बो, स्लाइम, रेत और रत्न हैं।', tut_wrong:'टुकड़े को चमकती जगह पर रखें',
   help_line_t:'लाइनें', help_line:'पूरी पंक्तियाँ और कॉलम भरें — वे गायब होकर अंक देते हैं। ब्लॉक कभी नीचे नहीं गिरते: जहाँ रखा, वहीं रहते हैं।',
   help_combo_t:'कॉम्बो', help_combo:'चाल-दर-चाल लाइनें साफ़ करें, कॉम्बो बढ़ता जाएगा। लगातार तीन चालें बिना लाइन के — और वह बुझ जाता है। लड़ी का कोई अंत नहीं, पर हर कदम पर अच्छे टुकड़े मिलना कठिन होता जाता है। हर कॉम्बो बोनस देता है (एक चाल में 5,000 तक), और 128 की लड़ी पर 10,000 का जैकपॉट।',
-  help_slime_t:'स्लाइम', help_slime:'स्लाइम चिपचिपा है: एक रंग की पास-पास की बूँदें साथ रहती हैं, और लाइन बूँद को छू ले तो पूरी बूँद फूट जाती है।',
+  help_slime_t:'स्लाइम', help_slime:'स्लाइम बस एक ब्लॉक है: Block Blast की तरह सिर्फ़ भरी हुई लाइनें ही मिटती हैं।',
   help_sand_t:'रेत', help_sand:'रेत भारी और ईमानदार है: ठीक वहीं रहती है जहाँ आपने रखी।',
-  help_gem_t:'रत्न', help_gem:'रत्न गूँजते हैं: लाइन में एक जलते ही उसके रंग के सारे रत्न साथ चले जाते हैं।',
+  help_gem_t:'रत्न', help_gem:'रत्न सामान्य ब्लॉक हैं: हर चाल में सिर्फ़ भरी हुई लाइनें ही मिटती हैं।',
   help_neon_t:'नियॉन', help_neon:'दुर्लभ ब्लॉक, लगभग 10,000 में एक। इसके साथ लाइन साफ़ करें, उस लाइन के अंक ×10।',
   help_bg_t:'बैकग्राउंड', help_bg:'नए रिकॉर्ड खेल के बीच ही नए बैकग्राउंड खोलते हैं: 1,000, 5,000, 10,000, 50,000, 1,00,000, 2,50,000, 5,00,000 और 10,00,000।',
   set_t:'सेटिंग्स', set_sfx:'ध्वनि प्रभाव', set_music:'संगीत', set_haptics:'कंपन', set_lang:'भाषा',
@@ -2214,12 +2205,21 @@ const NEON=[
 ].map(function(p){ return {name:p.name,c:hex(p.c)}; });
 
 // colours used by particles and flashes: [main, light, dark] as css strings
-function pal(mat,color){
-  if(mat===0){ const p=SLIME[color%SLIME.length]; return [css(p.mid),css(p.light),css(p.deep)]; }
-  if(mat===1){ const p=SAND[color%SAND.length]; return [css(p.base),css(p.light),css(p.dark)]; }
-  if(mat===2){ const p=GEM[color%GEM.length]; return [css(p.mid),css(p.hi),css(p.deep)]; }
-  const p=NEON[color%NEON.length]; return [css(p.c),css(mixc(p.c,[255,255,255],0.7)),css(mixc(p.c,[0,0,0],0.5))];
+// ---------------------------------------------------------------- Minecraft blocks
+// Every block in the game is one of four flat pixel-art squares: grass, fire, water and diamond block (neon and gems are the diamond block).
+// colours for particles and flashes: [main, light, dark]
+const MC=[
+  ['#5ea232','#8fd35a','#2e5d17'],   // 0 grass
+  ['#ff8a1e','#fff09a','#8f1505'],   // 1 fire
+  ['#2f66e8','#8bb8ff','#143a99'],   // 2 water
+  ['#45bdf3','#d9f6ff','#1f7fbf']    // 3 diamond block
+];
+function mcType(mat,color){
+  if(mat===0) return [0,2,1,2][color%4];
+  if(mat===1) return color%3;
+  return 3;
 }
+function pal(mat,color){ return MC[mcType(mat,color)].slice(); }
 
 // ---------------------------------------------------------------- sand
 function paintSand(ctx,S,p,seed){
@@ -2507,11 +2507,32 @@ function drawSprite(mat,color,variant,S){
   const cv=document.createElement('canvas'); cv.width=S; cv.height=S;
   const ctx=cv.getContext('2d');
   const seed=color*31+variant*7+mat*101+3;
-  if(mat===0) paintSlime(ctx,S,SLIME[color],seed);
-  else if(mat===1) paintSand(ctx,S,SAND[color],seed);
-  else if(mat===2) paintGem(ctx,S,GEM[color],seed);
-  else paintNeon(ctx,S,NEON[color],seed);
+  paintMC(ctx,S,mcType(mat,color),seed);
   return cv;
+}
+// pixel textures 16x16 (top and side), drawn once and kept
+const TEXC={};
+function mcTex(type,top,seed){
+  const key=type+'/'+top+'/'+seed; if(TEXC[key]) return TEXC[key];
+  const cv=document.createElement('canvas'); cv.width=cv.height=16;
+  const x=cv.getContext('2d'), rnd=rng32(seed*977+type*31+(top?5:0)+11), Q=[];
+  for(let i=0;i<64;i++) Q.push(rnd());
+  for(let j=0;j<16;j++) for(let i=0;i<16;i++){
+    const r=rnd(), m=(r+Q[(j>>1)*8+(i>>1)])/2, v=0.25*r+0.3*m+0.45*(top?0.7:j/16);
+    x.fillStyle = type===0 ? ((top||j<3+Q[i]*3) ? 'hsl(98,52%,'+(27+r*17)+'%)' : 'hsl(28,38%,'+(20+r*18)+'%)')
+      : type===1 ? 'hsl('+(v*58)+',100%,'+(22+v*46)+'%)'
+      : type===2 ? 'hsl(218,78%,'+(((i+j)%7)?38+m*26:70)+'%)'
+      : (r>0.96 ? '#fff' : 'hsl(199,86%,'+(48+m*38)+'%)');
+    x.fillRect(i,j,1,1);
+  }
+  return (TEXC[key]=cv);
+}
+// a flat square block: the 16x16 pixel texture blown up with hard edges, with a thin dark frame
+function paintMC(ctx,S,type,seed){
+  ctx.imageSmoothingEnabled=false;
+  ctx.drawImage(mcTex(type,0,seed),0,0,S,S);
+  ctx.lineWidth=Math.max(2,S/32); ctx.strokeStyle='rgba(0,0,0,.45)';
+  ctx.strokeRect(ctx.lineWidth/2,ctx.lineWidth/2,S-ctx.lineWidth,S-ctx.lineWidth);
 }
 function toUrl(cv){
   return new Promise(function(res){
